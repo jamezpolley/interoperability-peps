@@ -7,24 +7,26 @@ BDFL-Delegate: Nick Coghlan <ncoghlan@gmail.com>
 Status: Draft
 Type: Informational
 Content-Type: text/x-rst
-Created: 03-Jul-2015
+Created: 02-Jul-2015
+Post-History: 03-Jul-2015
 
 
 Abstract
 ========
 
-An **environment marker** describes a condition about the current execution
-environment. They are used to indicate when certain dependencies are only
-required in particular environments, and to indicate supported platforms
-for distributions with additional constraints beyond the availability of a
-Python runtime.
+Python packages can have dependencies on other python packages. In
+some cases, these dependencies are conditional on the environment into
+which the package is being installed.
+
+An **environment marker** describes a condition about the current
+execution environment. They are used to indicate whether a particular
+dependency will apply to a given environment.
 
 Environment markers were first specified in PEP-0345[1]. PEP-0426[2] (which
 would replace PEP-0345) proposed extensions to the markers. When
 2.7.10 was released, even these extensions became insufficient due to
 their reliance on simple lexical comparisons, and thus this PEP has
 been born.
-
 
 Rationale
 =========
@@ -48,14 +50,32 @@ Environment Markers attempt to provide more flexibility in a list of
 requirements by allowing the developer to list requirements that are
 specific to a particular environment.
 
+Alternatives considered
+=======================
+
+For a while, OpenStack used seperate requirements files for different
+environments - eg, ``requirements-py2.txt`` and
+``requirements-py3.txt``. However, in most cases the two files were
+near duplicates, with only one or two lines different; but maintaining
+two seperate files was more than twice as much work, as it required
+manual checking to keep the files in sync.
+
+Keeping all the requirements together in one place, with markers
+indicating which to install, has been easier to maintain.
+
 Examples
 ========
 
-Here are some examples of such markers inside a requirements.txt::
+Here is an example of such markers inside a requirements.txt
+file. This will install ``pywin32`` on Windows; ``unittest2`` on
+python2.4 or python2.5; ``backports.ssl_match_hostname`` on the
+versions where ssl_match_hostname is not already implemented; and
+``hawkey`` only on linux::
 
    pywin32 >=1.0 ; sys_platform == 'win32'
    unittest2 >=2.0,<3.0 ; python_version == '2.4' or python_version == '2.5'
-   backports.ssl_match_hostname >= 3.4 ; python_version < '2.7.9' or (python_version >= '3.0' and python_version < '3.4')
+   backports.ssl_match_hostname >= 3.4 ; python_version < '3.4' and python_version != '2.7.10'
+   hawkey ; 'linux' in sys_platform
 
 And here's an example of some conditional metadata included in
 setup.py for a distribution that requires PyWin32 both at runtime and
@@ -73,8 +93,8 @@ Micro-language
 The micro-language behind this is as follows. It compares:
 
 * strings with the ``==`` and ``in`` operators (and their opposites)
-* version numbers with the ``<``, ``<=``, ``>=``, and ``<`` operators
-  in addition to those supported for strings
+* version numbers with the ``==``, ``!=``, ``<``, ``<=``, ``>=``, and ``<`` operators.
+
 
 The usual boolean operators ``and`` and ``or`` can be used to combine
 expressions, and parentheses are supported for grouping.
@@ -100,30 +120,70 @@ version numbers are done using PEP-0440 semantics.
 Strings
 -------
 
-* ``os_name``: ``os.name``
-* ``sys_platform``: ``sys.platform``
-* ``platform_release``: ``platform.release()``
-* ``implementation_name``: ``sys.implementation.name``
-* ``platform_machine``: ``platform.machine()``
-* ``platform_python_implementation``: ``platform.python_implementation()``
+.. list-table::
+   :header-rows: 1
 
+   * - Marker
+     - Python equivalent
+     - Sample values
+   * - ``os_name``
+     - ``os.name``
+     - ``posix``, ``java``
+   * - ``sys_platform``
+     - ``sys.platform``
+     - ``linux``, ``darwin``, ``java1.8.0_51``
+   * - ``platform_release``
+     - ``platform.release()``
+     - ``3.14.1-x86_64-linode39``, ``14.5.0``, ``1.8.0_51``
+   * - ``platform_machine``
+     - ``platform.machine()``
+     - ``x86_64``
+   * - ``platform_python_implementation``
+     - ``platform.python_implementation()``
+     - ``CPython``, ``Jython``
+   * - ``implementation_name``
+     - ``sys.implementation.name``
+     - ``cpython``
+   * - ``platform_version``
+     - ``platform.version()``
+     - ``#1 SMP Fri Apr 25 13:07:35 EDT 2014``
 
-If a particular string value is not available (such as ``sys.implementation.name``
-in versions of Python prior to 3.3), the corresponding marker
-variable MUST be considered equivalent to the empty string.
+       ``Java HotSpot(TM) 64-Bit Server VM, 25.51-b03, Oracle Corporation``
 
-If a particular version number value is not available (such as
-``sys.implementation.version`` in versions of Python prior to 3.3) the
-corresponding marker variable MUST be considered equivalent to ``0``
+       ``Darwin Kernel Version 14.5.0: Wed Jul 29 02:18:53 PDT 2015; root:xnu-2782.40.9~2/RELEASE_X86_64``
+   * - ``platform_dist_name``
+     - ``platform.dist()[0]``
+     - ``Ubuntu``
+   * - ``platform_dist_version``
+     - ``platform.dist()[1]``
+     - ``14.04``
+   * - ``platform_dist_id``
+     - ``platform.dist()[2]``
+     - ``trusty``
+
+If a particular string value is not available (such as
+``sys.implementation.name`` in versions of Python prior to 3.3, or
+``platform.dist()`` on non-Linux systems), the corresponding marker
+variable returned by setuptools will be set to the empty string.
 
 
 Version numbers
 ---------------
+.. list-table::
+   :header-rows: 1
 
-* ``python_version``: ``platform.python_version()[:3]``
-* ``python_full_version``: see definition below
-* ``platform_version``: ``platform.version()``
-* ``implementation_version````: see definition below
+   * - Marker
+     - Python equivalent
+     - Sample values
+   * - ``python_version``
+     - ``platform.python_version()[:3]``
+     - ``3.4``, ``2.7``
+   * - ``python_full_version``
+     - see definition below
+     - ``3.4.0``, ``3.5.0b1``
+   * - ``implementation_version``
+     - see definition below
+     - ``3.4.0``, ``3.5.0b1``
 
 The ``python_full_version`` and ``implementation_version`` marker variables
 are derived from ``sys.version_info`` and ``sys.implementation.version``
@@ -140,6 +200,10 @@ respectively, in accordance with the following algorithm::
     implementation_version = format_full_version(sys.implementation.version)
 
 ``python_full_version`` will typically correspond to ``sys.version.split()[0]``.
+
+If a particular version number value is not available (such as
+``sys.implementation.version`` in versions of Python prior to 3.3) the
+corresponding marker variable returned by setuptools will be set to ``0``
 
 
 References
